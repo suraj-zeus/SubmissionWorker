@@ -13,4 +13,12 @@ public class RabbitMqConfig
     public string Password {get; set;} = string.Empty;
     public string SubmissionQueue {get; set;} = string.Empty;
 
+    public string DlxName {get; set;} = string.Empty;
+
+    public string DlqName {get; set;} = string.Empty;
+
+    public string RoutingKey {get; set;} = string.Empty;
+
+    public int MaxRetryAttempts {get; set;} = 3;
+
 }

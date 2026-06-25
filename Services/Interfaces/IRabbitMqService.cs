@@ -7,6 +7,9 @@ namespace SubmissionProcessor.Worker.Services;
 
 public interface IRabbitMqService
 {
-    public Task ConsumeAsync(Func<SubmissionProcessingRequest, Task> onMessageReceived);
+
+    public Task StartAsync(CancellationToken cancellationToken);
+    public Task ConsumeAsync(CancellationToken cancellationToken);
+    public Task StopAsync(CancellationToken cancellationToken);
 
 }

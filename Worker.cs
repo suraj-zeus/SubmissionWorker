@@ -14,20 +14,29 @@ public class Worker : BackgroundService
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await _rabbitMqService.StartAsync(cancellationToken);
+
+        await base.StartAsync(cancellationToken);
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
 
         _logger.LogInformation("Main background worker starting up...");
-        await _rabbitMqService.ConsumeAsync(async (request) =>
-       {
-           _logger.LogInformation("Processing business logic for Submission: {SubmissionId}", request.SubmissionId);
+        await _rabbitMqService.ConsumeAsync(cancellationToken);
 
-           await Task.Delay(500, stoppingToken);
+        await Task.Delay(Timeout.Infinite, cancellationToken);
+    }
 
-           _logger.LogInformation("Finished processing Submission: {SubmissionId} with CorrelationId : {CorrelationId} and MessageId : {MessageId}", request.SubmissionId, request.CorrelationId, request.MessageId);
 
-       });
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await _rabbitMqService.StopAsync(cancellationToken);
 
-        await Task.Delay(Timeout.Infinite, stoppingToken);
+        await base.StopAsync(cancellationToken);
+
     }
 }
