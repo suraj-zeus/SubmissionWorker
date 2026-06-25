@@ -11,6 +11,8 @@ using SubmissionProcessor.Worker.Messaging;
 using SubmissionProcessor.Worker.DatabaseContext;
 using SubmissionProcessor.Worker.Models;
 using SubmissionProcessor.Worker.Exceptions;
+using SubmissionProcessor.Worker.ServiceClients;
+using SubmissionProcessor.Worker.Dtos;
 
 
 
@@ -26,16 +28,19 @@ public class RabbitMqService : IRabbitMqService
     private IChannel _channel;
     private readonly IServiceScopeFactory _scopeFactory;
     private AppDbContext _context;
+    private TrainingDirectoryServiceClient _client;
 
     public RabbitMqService(
          IOptions<RabbitMqConfig> options,
          ILogger<RabbitMqService> logger,
-        IServiceScopeFactory scopeFactory
+        IServiceScopeFactory scopeFactory,
+        TrainingDirectoryServiceClient client
     )
     {
         _logger = logger;
         _rabbitMqConfig = options.Value;
         _scopeFactory = scopeFactory;
+        _client = client;
     }
 
 
@@ -132,7 +137,13 @@ public class RabbitMqService : IRabbitMqService
     public async Task ConsumeAsync(CancellationToken cancellationToken)
     {
 
-        if (_channel == null) {
+        // call TrainingDirectoryServiceClient to fetch trainee data
+        await FetchTraineeData(cancellationToken);
+
+
+
+        if (_channel == null)
+        {
             throw new BadRequestException("Rabbitmq channel not initialized..");
             return;
         }
@@ -173,8 +184,8 @@ public class RabbitMqService : IRabbitMqService
 
                 // Requeue the message back to the broker to retry execution
                 await _channel.BasicNackAsync(
-                    deliveryTag: eventArgs.DeliveryTag, 
-                    multiple: false, 
+                    deliveryTag: eventArgs.DeliveryTag,
+                    multiple: false,
                     requeue: true
                 );
             }
@@ -220,12 +231,13 @@ public class RabbitMqService : IRabbitMqService
             SubmissionFileModel fileMetaData = await _context.SubmissionFiles.FindAsync(request.FileId);
 
 
-             // if job not found or max attemps limit crossed
+            // if job not found or max attemps limit crossed
             // mark it as permanent failure when max attempt is crossed
             if (fileMetaData == null || processingJob == null || processingJob.Attempts >= _rabbitMqConfig.MaxRetryAttempts)
             {
-            
-                if(processingJob != null) {
+
+                if (processingJob != null)
+                {
                     processingJob.Status = ProcessingJobStatus.Failed.ToString();
                     await _context.SaveChangesAsync();
                 }
@@ -257,7 +269,7 @@ public class RabbitMqService : IRabbitMqService
             }
 
 
-           
+
 
             _logger.LogInformation($"Received message. MessageId:{processingJob.MessageId}, CorrelationId:{processingJob.CorrelationId}, SubmissionId:{processingJob.SubmissionId}");
 
@@ -310,12 +322,36 @@ public class RabbitMqService : IRabbitMqService
         }
 
         await _channel.BasicAckAsync(
-            deliveryTag: eventArgs.DeliveryTag, 
+            deliveryTag: eventArgs.DeliveryTag,
             multiple: false,
             cancellationToken: cancellationToken
         );
 
         _logger.LogInformation($"Acknowledged Message {request.MessageId}");
+    }
+
+
+    private async Task FetchTraineeData(CancellationToken cancellationToken)
+    {
+
+        try
+        {
+            TraineeProfileDto trainee = await _client.GetTraineeByIdAsync(1, cancellationToken);
+            _logger.LogInformation(
+                "Processed trainee: ID {TraineeId}, Name: {FirstName} {LastName}, Email: {Email}, Tech Stack: {TechStack}, Status: {Status}",
+                trainee.Id,
+                trainee.FirstName,
+                trainee.LastName,
+                trainee.Email,
+                trainee.TechStack,
+                trainee.Status
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Something went wrong fetching trainee data from Submission Processor Client");
+            throw;
+        }
     }
 
 }
